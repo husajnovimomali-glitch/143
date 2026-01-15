@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>:MELONAM: Madnes Race</title>
+<style>
+body, html { margin:0; padding:0; overflow:hidden; font-family:'Arial Black', sans-serif; background:#87CEEB; }
+canvas { display:block; background:#87CEEB; }
+
+/* Меню */
+#menu {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  background: linear-gradient(to bottom, #222, #555);
+  color:white; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center;
+}
+#menu h1 { font-size:3em; margin-bottom:20px; color:#FFD700; text-shadow:2px 2px 5px #000;}
+.btn { background:#333; color:white; padding:12px 25px; margin:5px; cursor:pointer; border:none; font-size:1.1em; border-radius:8px; transition:0.3s;}
+.btn:hover { background:#555; transform: scale(1.05);}
+#submenu { margin-top:20px; }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>:MELONAM: Madnes Race</h1>
+  <p>Выберите машину:</p>
+  <div id="carSelect">
+    <button class="btn" data-car="car">Машина</button>
+    <button class="btn" data-car="tank">Танк</button>
+    <button class="btn" data-car="helicopter">Вертолет</button>
+    <button class="btn" data-car="ufo">НЛО</button>
+    <button class="btn" data-car="buggy">Багги</button>
+    <button class="btn" data-car="hover">Ховеркар</button>
+  </div>
+  <div id="submenu">
+    <p>Выберите локацию:</p>
+    <button class="btn" data-loc="0">Пустыня</button>
+    <button class="btn" data-loc="1">Луна</button>
+    <button class="btn" data-loc="2">Марс</button>
+    <button class="btn" data-loc="3">Горы</button>
+    <button class="btn" data-loc="4">Метрополис</button>
+  </div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+// Игровые переменные
+let gameStarted=false;
+let playerCar='car';
+let locationIndex=0;
+
+// Физика и движение
+let carX=150, carY=canvas.height-150;
+let carSpeed=0, gravity=0.6, jumpPower=-15;
+let terrain=[], terrainOffset=0;
+let score=0;
+
+// Машины с способностями
+const cars={
+  car:{width:50,height:30,color:'blue',ability:'speedBoost',active:false,timer:0},
+  tank:{width:70,height:40,color:'green',ability:'destroy',active:false,timer:0},
+  helicopter:{width:60,height:30,color:'gray',ability:'fly',active:false,timer:0},
+  ufo:{width:60,height:20,color:'purple',ability:'teleport',active:false,timer:0},
+  buggy:{width:50,height:25,color:'orange',ability:'jump',active:false,timer:0},
+  hover:{width:60,height:20,color:'cyan',ability:'glide',active:false,timer:0}
+};
+
+// Локации
+const locations=[
+  {name:'Пустыня',color:'#EDC9AF',hillHeight:100, obstacles:['cactus','rock','wreck']},
+  {name:'Луна',color:'#AAA',hillHeight:50, obstacles:['crater','rock','alien']},
+  {name:'Марс',color:'#B22222',hillHeight:80, obstacles:['rock','crater','alien']},
+  {name:'Горы',color:'#556B2F',hillHeight:150, obstacles:['tree','rock','boulder']},
+  {name:'Метрополис',color:'#555',hillHeight:70, obstacles:['car','truck','barrier']}
+];
+
+// Объекты препятствий
+let gameObjects=[];
+
+// Меню
+document.querySelectorAll('#carSelect .btn').forEach(b=>b.onclick=()=>{playerCar=b.dataset.car; checkStart();});
+document.querySelectorAll('#submenu .btn').forEach(b=>b.onclick=()=>{locationIndex=parseInt(b.dataset.loc); checkStart();});
+function checkStart(){
+  if(playerCar!==undefined && locationIndex!==undefined){
+    document.getElementById('menu').style.display='none';
+    gameStarted=true;
+    generateTerrain();
+    generateObstacles();
+    requestAnimationFrame(gameLoop);
+  }
+}
+
+// Управление
+let left=false,right=false,jumping=false;
+document.addEventListener('keydown', e=>{
+  if(e.key==='ArrowRight') right=true;
+  if(e.key==='ArrowLeft') left=true;
+  if(e.key===' '||e.key==='ArrowUp') jump();
+});
+document.addEventListener('keyup', e=>{
+  if(e.key==='ArrowRight') right=false;
+  if(e.key==='ArrowLeft') left=false;
+});
+canvas.addEventListener('touchstart', e=>{
+  if(e.touches[0].clientX < canvas.width/2) left=true;
+  else right=true;
+});
+canvas.addEventListener('touchend', e=>{left=false; right=false;});
+
+// Генерация холмов
+function generateTerrain(){
+  terrain=[];
+  let lastY=canvas.height-100;
+  for(let i=0;i<200;i++){
+    lastY += (Math.random()-0.5)*locations[locationIndex].hillHeight;
+    terrain.push(lastY);
+  }
+}
+
+// Генерация препятствий
+function generateObstacles(){
+  gameObjects=[];
+  for(let i=50;i<terrain.length*10;i+=Math.floor(Math.random()*200+100)){
+    let type = locations[locationIndex].obstacles[Math.floor(Math.random()*locations[locationIndex].obstacles.length)];
+    gameObjects.push({x:i, y:terrain[Math.floor(i/10)]-20, type:type, width:30, height:30});
+  }
+}
+
+// Прыжок
+function jump(){
+  if(!jumping){carSpeed = jumpPower; jumping=true;}
+}
+
+// Основной цикл
+function gameLoop(){
+  if(!gameStarted) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Фон
+  ctx.fillStyle=locations[locationIndex].color;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Движение камеры
+  terrainOffset+=2+(cars[playerCar].active && cars[playerCar].ability==='speedBoost'?2:0);
+
+  // Рисуем дорогу
+  ctx.beginPath();
+  for(let i=0;i<terrain.length;i++){
+    let x=i*10-terrainOffset;
+    let y=terrain[i];
+    if(i===0) ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  }
+  ctx.lineTo(canvas.width,canvas.height);
+  ctx.lineTo(0,canvas.height);
+  ctx.closePath();
+  ctx.fillStyle='#654321';
+  ctx.fill();
+
+  // Машина
+  let index=Math.floor(terrainOffset/10);
+  if(index>=terrain.length) generateTerrain();
+  let carYBase=terrain[index]-cars[playerCar].height;
+  carY+=carSpeed;
+  carSpeed+=gravity;
+  if(carY>carYBase){carY=carYBase; carSpeed=0; jumping=false;}
+
+  if(right) terrainOffset+=4;
+  if(left) terrainOffset-=2;
+
+  // Рисуем препятствия
+  for(let obj of gameObjects){
+    obj.x -= terrainOffset>0?terrainOffset-((terrainOffset-2)); // движение камеры
+    if(obj.x+obj.width>0 && obj.x<canvas.width){
+      ctx.fillStyle='red';
+      ctx.fillRect(obj.x,obj.y,obj.width,obj.height);
+      // Проверка столкновения
+      if(carX<obj.x+obj.width && carX+cars[playerCar].width>obj.x &&
+         carY<obj.y+obj.height && carY+cars[playerCar].height>obj.y){
+           // Обработка способности destroy
+           if(cars[playerCar].active && cars[playerCar].ability==='destroy'){obj.x=-100;}
+           else {ctx.fillStyle='white'; ctx.font='50px sans-serif'; ctx.fillText('GAME OVER',canvas.width/2-150,canvas.height/2); return;}
+         }
+    }
+  }
+
+  // Рисуем машину
+  ctx.fillStyle=cars[playerCar].color;
+  ctx.fillRect(carX,carY,cars[playerCar].width,cars[playerCar].height);
+
+  // Счёт и HUD
+  score=Math.floor(terrainOffset/10);
+  ctx.fillStyle='white';
+  ctx.font='20px sans-serif';
+  ctx.fillText(':MELONAM: Madnes Race',20,30);
+  ctx.fillText(`Score: ${score}`,20,60);
+  ctx.fillText(`Location: ${locations[locationIndex].name}`,20,90);
+
+  requestAnimationFrame(gameLoop);
+}
+</script>
+
+</body>
+</html>
